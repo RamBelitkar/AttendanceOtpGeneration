@@ -15,7 +15,7 @@ var myChart = new Chart(ctx, {
     ],
     datasets: [
       {
-        data: [30,45,50,70,65,60,30],
+        data: [],
         lineTension: 0,
         backgroundColor: "transparent",
         borderColor: "#007bff",
@@ -69,5 +69,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
       tbody.appendChild(row);
   });
+
+  
 });
 

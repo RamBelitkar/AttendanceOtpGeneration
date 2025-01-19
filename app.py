@@ -20,6 +20,7 @@ from flask_mail import Mail, Message
 import pandas as pd
 app = Flask(__name__, static_folder='static')
 from geopy.distance import geodesic
+from datetime import datetime
 
 AISSMS_COORDINATES = (18.505437627232865, 73.95293901495018)
 
@@ -55,8 +56,10 @@ class Authenticate(db.Model, UserMixin):
 
     def __repr__(self) -> str:
         return f"{self.sno} - {self.username} - {self.password}"
+
     def get_id(self):
         return str(self.sno)
+
 
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -111,6 +114,16 @@ class markedAttendance(db.Model):
     batch = db.Column(db.String(20),nullable=False)
     slot = db.Column(db.String(200),nullable=False)
 
+class Timetable(db.Model): 
+    id = db.Column(db.Integer, primary_key=True) 
+    username = AttendanceRecord.roll_no
+    subject = db.Column(db.String(50), nullable=False) 
+    timing = db.Column(db.String(50), nullable=False) 
+    room = db.Column(db.String(50), nullable=False) 
+    day = db.Column(db.String(50), nullable=False) 
+    def __repr__(self): 
+        return f"{self.username} - {self.subject} - {self.timing} - {self.room} - {self.day}"
+    
 @login_manager.user_loader
 def load_user(user_id):
     return Authenticate.query.get(int(user_id))
@@ -137,7 +150,13 @@ def login():
 def home():
     return render_template("home.html") 
 
-
+@app.route('/get_data', methods=['POST'])
+def get_data():
+    current_date = datetime.now().date()
+    start_of_week = current_date - datetime.timedelta(days=current_date.weekday())
+    end_of_week = start_of_week + datetime.timedelta(days=6)
+    data = TimeTable.query.filter(TimeTable.date.between(start_of_week, end_of_week)).all()
+    
 
 @app.route("/showAdmin")
 @login_required
@@ -158,6 +177,21 @@ def to_addStudent():
 @app.route('/uploadStudentData')
 def to_uploadStudentData():
     return render_template('uploadStudentData.html')
+
+@app.route('/upload_data',methods=['POST'])
+def upload_data():
+    if 'file' not in request.files:
+        return redirect(request.url)
+    username = Student.query.filter_by(roll_no=current_user.username).first()
+    subject = request.form['subject'] 
+    timing = request.form['timing'] 
+    room = request.form['room'] 
+    day = request.form['day']
+    new_timetable = TimeTable_data(username=username, subject=subject, timing=timing, room=room, day=day)
+    db.session.add(new_timetable)
+    db.session.commit()
+    return render_template('admin.html')
+
 
 @app.route('/markattendance')
 def markattendance():
@@ -392,8 +426,7 @@ def generate_otp():
         except Exception as e:
             flash('Failed to send OTP. Please try again.', 'danger')
             print(f"Error: {e}")
-        
-    
+
     return render_template('generate_otp.html', email=email)
 
 
@@ -548,6 +581,31 @@ def fetch_lectures():
     # Return the data in JSON format
     return jsonify({"slotsData": slots_data}), 200
 
+@app.route("/generate_otp", methods=["POST"])
+def generate_otp_handler():
+    # Generate a random OTP
+    otp = ''.join(random.choices(string.digits, k=6))
+    
+    # Set the OTP and its expiration time in the session
+    session['otp'] = otp
+    session['otp_expiry'] = (datetime.datetime.now() + datetime.timedelta(minutes=10)).isoformat()
+    
+    return jsonify({"otp": otp, "expiry": session['otp_expiry']})
+
+@app.route("/check_otp_expiry", methods=["GET"])
+def check_otp_expiry():
+    # Check if the OTP session has expired
+    if 'otp_expiry' in session:
+        expiry_time = datetime.datetime.fromisoformat(session['otp_expiry'])
+        remaining_time = (expiry_time - datetime.datetime.now()).total_seconds()
+        
+        if remaining_time > 0:
+            return jsonify({"status": "active", "remaining_time": remaining_time})
+        else:
+            session.pop('otp', None)
+            session.pop('otp_expiry', None)
+            return jsonify({"status": "expired"})
+    return jsonify({"status": "no_otp"})
 
 if __name__ == "__main__":
     app.run(debug=True)
